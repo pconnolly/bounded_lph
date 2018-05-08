@@ -9,6 +9,8 @@ class BoundedLPH:
 
     def __init__(self, dim_bounds, charset):
         self.dim_bounds = dim_bounds
+        #TODO Verify dim_bounds has exactly 2 values?
+        
         for dim in dim_bounds:
             min_value = dim[0]
             max_value = dim[1]
@@ -20,8 +22,10 @@ class BoundedLPH:
             raise ValueError("Number of encoded values ({num_chars}) must be a power of 2".format(num_chars=num_chars))
 
         self.encodemap = {}
+        self.decodemap = {}
         for i in range(num_chars):
             self.encodemap[i] = charset[i]
+            self.decodemap[charset[i]] = i
 
         self.num_encoded_bits = (num_chars - 1).bit_length()
 
@@ -136,8 +140,51 @@ class BoundedLPH:
             self._get_dim_hash(dim_value = dim_value, num_bits_per_dim = num_bits_per_dim - 1, min_value = min_value, max_value = max_value, hash_array = hash_array) 
 
 
-    def get_hash_centroid(self, hashcode):
-        #TODO
+    def _get_dim_range(self, dim_binary, min_value, max_value):
+        current_value = min_value
+        mid_value = (min_value + max_value) / 2
+        for current_bit in dim_binary:
+            if (current_bit == 1):
+                min_value = mid_value
+            else :
+                max_value = mid_value
+            mid_value = (min_value + max_value) / 2
+        return [min_value, max_value]
+
 
     def get_hash_bbox(self, hashcode):
-        #TODO
+        binary_hash = self._to_binary(hashcode)
+        bbox = np.zeros([0,2], dtype=float) 
+        for idx, dim_binary in enumerate(binary_hash):
+            dim_range = self._get_dim_range(dim_binary = dim_binary, min_value = self.dim_bounds[idx][0], max_value = self.dim_bounds[idx][1])
+            bbox = np.concatenate((bbox, [dim_range]))
+
+        return bbox
+
+    def _to_binary(self, hashcode):
+        bits_per_char = len(self.bit_power)
+        binary_hash = np.zeros(len(hashcode) * bits_per_char, dtype=int)
+        i = 0
+        for char in hashcode:
+            value = self.decodemap[char] 
+            binary_value = format(value, 'b').rjust(bits_per_char, '0')
+            for bit in binary_value:
+                binary_hash[i] = bit
+                i = i + 1
+            #print(binary_value) 
+
+        #print(binary_hash)
+        return np.reshape(binary_hash, [len(self.dim_bounds), -1], order='F')
+
+    def get_hash_centroid(self, hashcode):
+        bbox = self.get_hash_bbox(hashcode)
+        centroid= np.zeros(len(self.dim_bounds), dtype=float) 
+        for idx, dim_bounds in enumerate(bbox):
+            min_value = dim_bounds[0]
+            max_value = dim_bounds[1]
+            mid_value = (min_value + max_value) / 2
+            centroid[idx] = mid_value
+
+        return centroid
+
+
