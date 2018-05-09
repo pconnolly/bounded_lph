@@ -151,15 +151,35 @@ class BoundedLPH:
             mid_value = (min_value + max_value) / 2
         return [min_value, max_value]
 
-
+    # Return a bounding polygon that traverses all the edges of the polygon that describes this hash. 
+    # The last point in the polygon is equivalent to the first  
     def get_hash_bbox(self, hashcode):
+        dim_ranges = self.get_hash_dim_ranges(hashcode)
+        bbox = np.zeros((2**len(dim_ranges)+1,len(dim_ranges)), dtype=float)
+        i = 0
+        for permutation in range(0, 2**len(dim_ranges)):
+            binary_value = format(permutation, 'b').rjust(len(dim_ranges), '0')
+            j = 0
+            for binary_bit in binary_value:
+                if(binary_bit == '1'):
+                    bbox[i][j] = dim_ranges[j][1]
+                else: 
+                    bbox[i][j] = dim_ranges[j][0]
+                j = j + 1
+            i = i + 1
+
+        # Finish with the last point being equal to the first
+        bbox[-1] = bbox[0] 
+        return bbox
+
+    def get_hash_dim_ranges(self, hashcode):
         binary_hash = self._to_binary(hashcode)
-        bbox = np.zeros([0,2], dtype=float) 
+        dim_ranges = np.zeros([0,2], dtype=float) 
         for idx, dim_binary in enumerate(binary_hash):
             dim_range = self._get_dim_range(dim_binary = dim_binary, min_value = self.dim_bounds[idx][0], max_value = self.dim_bounds[idx][1])
-            bbox = np.concatenate((bbox, [dim_range]))
+            dim_ranges = np.concatenate((dim_ranges, [dim_range]))
 
-        return bbox
+        return dim_ranges 
 
     def _to_binary(self, hashcode):
         bits_per_char = len(self.bit_power)
@@ -177,9 +197,9 @@ class BoundedLPH:
         return np.reshape(binary_hash, [len(self.dim_bounds), -1], order='F')
 
     def get_hash_centroid(self, hashcode):
-        bbox = self.get_hash_bbox(hashcode)
+        dim_ranges = self.get_hash_dim_ranges(hashcode)
         centroid= np.zeros(len(self.dim_bounds), dtype=float) 
-        for idx, dim_bounds in enumerate(bbox):
+        for idx, dim_bounds in enumerate(dim_ranges):
             min_value = dim_bounds[0]
             max_value = dim_bounds[1]
             mid_value = (min_value + max_value) / 2
