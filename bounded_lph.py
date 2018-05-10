@@ -17,6 +17,8 @@ class BoundedLPH:
             if(min_value > max_value):
                 raise ValueError("Minimum value {min_value} cannot be greater than max value {max_value}".format(min_value=min_value, max_value=max_value))
 
+        self.num_dimensions = len(dim_bounds)
+
         num_chars = len(charset)
         if(not self.is_power2(num_chars)):
             raise ValueError("Number of encoded values ({num_chars}) must be a power of 2".format(num_chars=num_chars))
@@ -95,29 +97,7 @@ class BoundedLPH:
 
         return encoded_hash 
 
-    #def get_binary_hash(self, point, level):
-        #if(self.dim_bounds.shape[0] != point.shape[0]):
-            #raise ValueError("Point is not the same number of dimensions ({point_dim}) as the boundary definition ({bound_dim})".format(point_dim=point.shape[0], bound_dim=self.dim_bounds.shape[0]))
-#
-        ##Loop through each dimension and get the hash values for that dimension
-        #hash_array = np.zeros((len(self.dim_bounds), level), dtype=int)
-        #for idx in range(0, len(self.dim_bounds)):
-            #dim = self.dim_bounds[idx]
-            #dim_value = point[idx]
-            #min_value = dim[0]
-            #max_value = dim[1]
-#
-            #if(dim_value > max_value):
-                #raise ValueError("Value {dim_value} is greater than maximum {max_value}".format(dim_value=dim_value, max_value=max_value))
-#
-            #if(dim_value < min_value):
-                #raise ValueError("Value {dim_value} is less than minimum {min_value}".format(dim_value=dim_value, min_value=min_value))
-#
-            #self._get_dim_hash(dim_value = dim_value, level = level, min_value = min_value, max_value = max_value, hash_array = hash_array[idx])
-#
-        ##Hash values are stored one row per dimension, we need to take all the values in column 1, then all the values in column 2, etc. 
-        #return np.reshape(hash_array, -1, order='F')
-        
+
 
     #Recursively get the hash for a single dimension
     def _get_dim_hash(self, dim_value, num_bits_per_dim, min_value, max_value, hash_array):
@@ -150,6 +130,7 @@ class BoundedLPH:
                 max_value = mid_value
             mid_value = (min_value + max_value) / 2
         return [min_value, max_value]
+
 
     # Return a bounding polygon that traverses all the edges of the polygon that describes this hash. 
     # The last point in the polygon is equivalent to the first  
@@ -206,5 +187,69 @@ class BoundedLPH:
             centroid[idx] = mid_value
 
         return centroid
+
+    # TODO Construct array of array_length containing powers of two and then multiply the arrays and get the sum instead of doing it elementwise. 
+    # Save this array for later since we'll probably re-use it
+    def _binary_to_int(self, binary_array):
+        array_length = len(binary_array)
+        value = 0
+        for i in range(0, array_length):
+            value = value + (2**(array_length - i - 1) * binary_array[i])
+        return value
+
+    def _int_to_binaryarray(self, value, num_bits):
+        binary_string = format(value, 'b').rjust(num_bits, '0')
+        return np.fromstring(binary_string,'u1') - ord('0')
+
+    def _binary_to_hash(self, linear_bits):
+        encoded_hash = ""
+        precision = int(len(linear_bits) / self.num_encoded_bits)
+        #print("precision: {precision}".format(precision=precision))
+        for i in range(0, precision):
+            char_bits = linear_bits[i * self.num_encoded_bits:(i + 1) * self.num_encoded_bits]
+            #print("char_bits: {char_bits}".format(char_bits=char_bits))
+            #print("bit_power: {bit_power}".format(bit_power=self.bit_power))
+            scaled_bits = np.multiply(char_bits, self.bit_power)
+            decoded_value = scaled_bits.sum()
+            #print("Bits:")
+            #print(char_bits)
+            #print(scaled_bits)
+            #print(decoded_value)
+            #print(self.encodemap[decoded_value])
+            encoded_hash = encoded_hash + self.encodemap[decoded_value]
+
+
+        return encoded_hash 
+
+    def get_adjacent_hashes(self, hashcode, distance=1):
+        offsets = np.arange(-distance, distance + 1)
+        offset_len = len(offsets)
+
+        binary_hash = self._to_binary(hashcode)
+        output = np.zeros((offset_len ** self.num_dimensions,binary_hash.size))
+        for dim_idx, dim_binary in enumerate(binary_hash):
+            binary_with_offset = np.zeros((offset_len,len(dim_binary)))
+            for offset_idx, offset in enumerate(offsets):
+                binary_with_offset[offset_idx] = self._int_to_binaryarray(self._binary_to_int(dim_binary) + offset, len(dim_binary)) 
+              
+                offset_index = 0
+                values_until_switch = offset_len ** (self.num_dimensions - dim_idx - 1) 
+                for i in range(0, offset_len ** self.num_dimensions):
+                    for j in range(0, len(binary_with_offset[offset_idx])):
+                        output[i][(j * self.num_dimensions) + dim_idx] = binary_with_offset[offset_index][j]
+
+                    if ((i % values_until_switch) == 0):
+                        offset_index = (offset_index + 1) % offset_len
+
+        output_hashes = []
+        for binary_hash in output:
+            output_hash = self._binary_to_hash(binary_hash)
+            if(output_hash != hashcode):
+                output_hashes.append(output_hash)
+
+        return output_hashes
+
+
+
 
 
